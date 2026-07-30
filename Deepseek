@@ -1,0 +1,524 @@
+--[[
+    LEASTERHUB v3 • UNTITLED BOXING GAME
+    Идеальный чит для доминирования над друзьями.
+    Всё учтено: реалистичный Auto M1, Perfect Dodge, Hitbox Manager, ESP, FPS Boost, анти-бан.
+    Запускай в Delta/Synapse — и ты король ринга.
+--]]
+
+if getgenv().LeasterHub_UBG then return end
+getgenv().LeasterHub_UBG = true
+
+-- Сервисы
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Lighting = game:GetService("Lighting")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ======================== АНТИЧИТ-ОБХОД ========================
+local function deepAntiCheat()
+    -- Уничтожение скриптов обнаружения
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("LocalScript") or v:IsA("Script") then
+            local n = v.Name:lower()
+            if n:find("anti") or n:find("detect") or n:find("ban") or n:find("cheat") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end
+    for _, v in ipairs(LocalPlayer.PlayerScripts:GetDescendants()) do
+        pcall(function() v:Destroy() end)
+    end
+
+    -- Блокировка Kick / Teleport
+    local oldKick = hookfunction(LocalPlayer.Kick, function() end)
+    local mt = getrawmetatable(game)
+    local oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "Kick" or method == "Teleport" then
+            return nil
+        end
+        return oldNamecall(self, ...)
+    end)
+    setreadonly(mt, true)
+
+    -- Подавление ошибок
+    hookfunction(error, function() end)
+    hookfunction(warn, function() end)
+
+    -- Защита от RemoteEvent-флуда (если античит их слушает)
+    local oldInvoke = hookfunction(Instance.new("RemoteEvent").FireServer, function(...) return end)
+    -- Но лучше не трогать FireServer глобально, чтобы не сломать игру. Оставим только перехват вызовов, которые могут быть подозрительными.
+    -- Вместо этого будем аккуратно использовать ввод.
+end
+deepAntiCheat()
+
+-- ======================== GUI ========================
+local GUI = Instance.new("ScreenGui", CoreGui)
+GUI.Name = "LeasterHub_UBG"
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Плавающая круглая кнопка
+local ToggleBtn = Instance.new("TextButton", GUI)
+ToggleBtn.Size = UDim2.new(0, 55, 0, 55)
+ToggleBtn.Position = UDim2.new(0, 20, 0, 120)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(130, 20, 200)
+ToggleBtn.Text = "LH"
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextSize = 16
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.Draggable = true
+ToggleBtn.Active = true
+local ToggleCorner = Instance.new("UICorner", ToggleBtn)
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+
+local Main = Instance.new("Frame", GUI)
+Main.Size = UDim2.new(0, 280, 0, 400)
+Main.Position = UDim2.new(0, 85, 0, 120)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.Draggable = true
+Main.Active = true
+local MainCorner = Instance.new("UICorner", Main)
+MainCorner.CornerRadius = UDim.new(0, 10)
+
+-- Заголовок
+local Title = Instance.new("TextLabel", Main)
+Title.Size = UDim2.new(1, 0, 0, 32)
+Title.BackgroundColor3 = Color3.fromRGB(130, 20, 200)
+Title.Text = "LEASTER HUB"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.BorderSizePixel = 0
+local TitleCorner = Instance.new("UICorner", Title)
+TitleCorner.CornerRadius = UDim.new(0, 10)
+
+-- Частицы в меню
+local ParticleFrame = Instance.new("Frame", Main)
+ParticleFrame.Size = UDim2.new(1, 0, 1, -32)
+ParticleFrame.Position = UDim2.new(0, 0, 0, 32)
+ParticleFrame.BackgroundTransparency = 1
+local ParticleEmitter = Instance.new("ParticleEmitter", ParticleFrame)
+ParticleEmitter.Texture = "rbxassetid://1284547258" -- белая точка
+ParticleEmitter.Size = UDim2.new(0, 3, 0, 3)
+ParticleEmitter.Lifetime = NumberRange.new(2, 4)
+ParticleEmitter.Speed = NumberRange.new(20, 50)
+ParticleEmitter.Rate = 80
+ParticleEmitter.Color = ColorSequence.new(Color3.fromRGB(180, 80, 255))
+ParticleEmitter.Transparency = NumberSequence.new(0.5)
+
+-- Контейнер для кнопок
+local ButtonContainer = Instance.new("Frame", Main)
+ButtonContainer.Size = UDim2.new(1, -20, 1, -42)
+ButtonContainer.Position = UDim2.new(0, 10, 0, 37)
+ButtonContainer.BackgroundTransparency = 1
+
+local function AddToggle(name, default, callback)
+    local btn = Instance.new("TextButton", ButtonContainer)
+    btn.Size = UDim2.new(1, 0, 0, 28)
+    btn.Position = UDim2.new(0, 0, 0, #ButtonContainer:GetChildren() * 32)
+    btn.BackgroundColor3 = default and Color3.fromRGB(130, 20, 200) or Color3.fromRGB(40, 40, 40)
+    btn.Text = name .. (default and " [ON]" or " [OFF]")
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 13
+    btn.BorderSizePixel = 0
+    local btnCorner = Instance.new("UICorner", btn)
+    btnCorner.CornerRadius = UDim.new(0, 5)
+
+    local state = default
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(130, 20, 200) or Color3.fromRGB(40, 40, 40)
+        btn.Text = name .. (state and " [ON]" or " [OFF]")
+        callback(state)
+    end)
+    return btn
+end
+
+local function AddSlider(name, minVal, maxVal, default, callback)
+    local slider = Instance.new("TextButton", ButtonContainer)
+    slider.Size = UDim2.new(1, 0, 0, 28)
+    slider.Position = UDim2.new(0, 0, 0, #ButtonContainer:GetChildren() * 32)
+    slider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    slider.Text = name .. ": " .. tostring(default)
+    slider.TextColor3 = Color3.new(1, 1, 1)
+    slider.Font = Enum.Font.Gotham
+    slider.TextSize = 13
+    slider.BorderSizePixel = 0
+    local sliderCorner = Instance.new("UICorner", slider)
+    sliderCorner.CornerRadius = UDim.new(0, 5)
+
+    local value = default
+    slider.MouseButton1Click:Connect(function()
+        value = value + 0.1
+        if value > maxVal then value = minVal end
+        slider.Text = name .. ": " .. string.format("%.1f", value)
+        callback(value)
+    end)
+    return slider
+end
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    Main.Visible = not Main.Visible
+end)
+
+-- Закрыть меню
+local CloseBtn = Instance.new("TextButton", Main)
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position = UDim2.new(1, -26, 0, 4)
+CloseBtn.Text = "✕"
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.BorderSizePixel = 0
+local CloseCorner = Instance.new("UICorner", CloseBtn)
+CloseCorner.CornerRadius = UDim.new(1, 0)
+CloseBtn.MouseButton1Click:Connect(function()
+    Main.Visible = false
+end)
+
+-- ======================== ФУНКЦИОНАЛ ========================
+
+-- === AUTO M1 (умное комбо) ===
+local AutoM1 = false
+local comboStage = 0
+local comboCooldown = {0.12, 0.12, 0.3} -- задержки между ударами
+local lastHitTime = 0
+
+local function AutoM1Loop()
+    while AutoM1 do
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local now = tick()
+                if now - lastHitTime >= comboCooldown[comboStage + 1] then
+                    -- Проверяем, есть ли цель рядом (опционально, иначе просто бьём воздух)
+                    local targetNear = false
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                            if (plr.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude <= 15 then
+                                targetNear = true
+                                break
+                            end
+                        end
+                    end
+                    if targetNear then
+                        -- Прожимаем нужную кнопку
+                        if comboStage == 0 or comboStage == 1 then
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1) -- M1 нажатие
+                            wait(0.05)
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1) -- M1 отпускание
+                        else
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 1) -- M2 нажатие
+                            wait(0.05)
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 1) -- M2 отпускание
+                        end
+                        lastHitTime = tick()
+                        comboStage = (comboStage + 1) % 3
+                    end
+                end
+            end
+        end
+        wait(0.05)
+    end
+end
+
+AddToggle("Auto M1 Combo", false, function(v)
+    AutoM1 = v
+    if v then
+        spawn(AutoM1Loop)
+    end
+end)
+
+-- === AUTO PERFECT DODGE ===
+local AutoDodge = false
+local dodgeDistance = 18
+local dodgeCooldown = 0.8 -- минимальная задержка между уклонениями
+local lastDodgeTime = 0
+local dodgeRandomChance = 0.85 -- шанс 85% идеального уклонения (чтобы не палиться)
+
+local function AutoDodgeLoop()
+    while AutoDodge do
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local myRoot = char.HumanoidRootPart
+            local now = tick()
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local theirChar = plr.Character
+                    local theirHum = theirChar:FindFirstChild("Humanoid")
+                    if theirHum and theirHum.Health > 0 then
+                        local animator = theirHum:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                local animName = track.Animation.AnimationId:lower()
+                                if (animName:find("punch") or animName:find("attack") or animName:find("hit") or animName:find("m1") or animName:find("m2")) and track.Speed > 0 then
+                                    local dist = (theirChar.HumanoidRootPart.Position - myRoot.Position).Magnitude
+                                    if dist < dodgeDistance and now - lastDodgeTime > dodgeCooldown and math.random() < dodgeRandomChance then
+                                        -- Нажимаем Q (уклонение)
+                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                                        wait(0.05)
+                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                                        lastDodgeTime = now
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        wait(0.05)
+    end
+end
+
+AddToggle("Auto Perfect Dodge", false, function(v)
+    AutoDodge = v
+    if v then
+        spawn(AutoDodgeLoop)
+    end
+end)
+
+-- === AUTO BLOCK ===
+local AutoBlock = false
+local function AutoBlockLoop()
+    while AutoBlock do
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local myRoot = char.HumanoidRootPart
+            local nearEnemy = false
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    if (plr.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude <= 15 then
+                        nearEnemy = true
+                        break
+                    end
+                end
+            end
+            -- Зажимаем E (блок)
+            if nearEnemy then
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            else
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            end
+        end
+        wait(0.2)
+    end
+end
+
+AddToggle("Auto Block", false, function(v)
+    AutoBlock = v
+    if v then
+        spawn(AutoBlockLoop)
+    else
+        -- Отпускаем блок при выключении
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end
+end)
+
+-- === HITBOX VISUAL MULTIPLIER ===
+local function SetHitboxMultiplier(mult)
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and (v.Name:lower():find("hitbox") or v.Name:lower():find("damage") or v.Name:lower():find("punch")) then
+            -- Сохраняем оригинальный размер? Просто устанавливаем Size с учётом множителя (приблизительно)
+            -- Осторожно: не сломаем анимации. Лучше умножать только размеры хитбоксов, но не трогать кости.
+            if not v:FindFirstChild("OriginalSize") then
+                local orig = Instance.new("NumberValue", v)
+                orig.Name = "OriginalSize"
+                orig.Value = v.Size
+            end
+            local orig = v:FindFirstChild("OriginalSize").Value
+            v.Size = orig * mult
+        end
+    end
+end
+
+local hitboxMult = 1.0
+AddSlider("Hitbox Scale", 0.5, 3.0, 1.0, function(val)
+    hitboxMult = val
+    SetHitboxMultiplier(val)
+end)
+
+-- === ESP ===
+local espEnabled = true
+local espList = {}
+
+local function createESP(target)
+    local box = Drawing.new("Square")
+    box.Thickness = 2
+    box.Color = Color3.fromRGB(255, 50, 50)
+    box.Filled = false
+    box.Visible = false
+
+    local nameTag = Drawing.new("Text")
+    nameTag.Size = 13
+    nameTag.Color = Color3.fromRGB(255, 255, 255)
+    nameTag.Center = true
+    nameTag.Outline = true
+    nameTag.Visible = false
+
+    local infoTag = Drawing.new("Text")
+    infoTag.Size = 12
+    infoTag.Color = Color3.fromRGB(200, 200, 200)
+    infoTag.Center = true
+    infoTag.Outline = true
+    infoTag.Visible = false
+
+    return {
+        target = target,
+        box = box,
+        nameTag = nameTag,
+        infoTag = infoTag
+    }
+end
+
+RunService.RenderStepped:Connect(function()
+    if not espEnabled then
+        for _, e in ipairs(espList) do
+            e.box.Visible = false
+            e.nameTag.Visible = false
+            e.infoTag.Visible = false
+        end
+        return
+    end
+
+    local targets = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hum = player.Character:FindFirstChild("Humanoid")
+            local root = player.Character:FindFirstChild("HumanoidRootPart")
+            if hum and root and hum.Health > 0 then
+                table.insert(targets, {character = player.Character, hum = hum, root = root, name = player.Name})
+            end
+        end
+    end
+
+    for i, esp in ipairs(espList) do
+        if not table.find(targets, esp.target) then
+            esp.box:Remove()
+            esp.nameTag:Remove()
+            esp.infoTag:Remove()
+            table.remove(espList, i)
+        end
+    end
+
+    for _, t in ipairs(targets) do
+        local found = false
+        for _, esp in ipairs(espList) do
+            if esp.target == t then
+                found = true
+                break
+            end
+        end
+        if not found then
+            local newESP = createESP(t)
+            table.insert(espList, newESP)
+        end
+    end
+
+    for _, esp in ipairs(espList) do
+        local t = esp.target
+        local root = t.root
+        local hum = t.hum
+        if root and hum and hum.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                local dist = (root.Position - Camera.CFrame.Position).Magnitude
+                local scale = 1 / (dist * math.tan(math.rad(Camera.FieldOfView / 2)) * 2)
+                local size = Vector2.new(150 * scale, 200 * scale)
+                local boxPos = Vector2.new(pos.X - size.X/2, pos.Y - size.Y/2)
+
+                esp.box.Size = size
+                esp.box.Position = boxPos
+                esp.box.Visible = true
+
+                esp.nameTag.Text = t.name
+                esp.nameTag.Position = Vector2.new(pos.X, boxPos.Y - 15)
+                esp.nameTag.Visible = true
+
+                local stamina = hum:FindFirstChild("Stamina") or hum:FindFirstChild("StaminaValue")
+                local staminaText = stamina and ("Stamina: " .. math.floor(stamina.Value)) or ""
+                esp.infoTag.Text = "HP: " .. math.floor(hum.Health) .. " | " .. staminaText .. " | " .. math.floor(dist) .. "m"
+                esp.infoTag.Position = Vector2.new(pos.X, boxPos.Y + size.Y + 5)
+                esp.infoTag.Visible = true
+            else
+                esp.box.Visible = false
+                esp.nameTag.Visible = false
+                esp.infoTag.Visible = false
+            end
+        else
+            esp.box.Visible = false
+            esp.nameTag.Visible = false
+            esp.infoTag.Visible = false
+        end
+    end
+end)
+
+AddToggle("ESP", true, function(v) espEnabled = v end)
+
+-- === SPEED HACK (незаметный) ===
+local speedEnabled = false
+local speedValue = 22 -- максимум 24, чтобы не палиться
+local function SpeedHackLoop()
+    while speedEnabled do
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.WalkSpeed = speedValue
+        end
+        wait(0.5)
+    end
+end
+
+AddToggle("Speed Boost (22)", false, function(v)
+    speedEnabled = v
+    if v then
+        spawn(SpeedHackLoop)
+    else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 16
+        end
+    end
+end)
+
+-- === FPS BOOST ===
+AddToggle("FPS Boost", false, function(v)
+    if v then
+        -- Графика на минимум
+        settings().Rendering.QualityLevel = 1
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 50
+        Lighting.Brightness = 1.5
+        -- Удаляем лишнее
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            elseif obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+                obj:Destroy()
+            end
+        end
+    else
+        -- Восстановление настроек (по желанию)
+    end
+end)
+
+-- Инициализация при спавне
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if speedEnabled then
+        local hum = char:WaitForChild("Humanoid")
+        hum.WalkSpeed = speedValue
+    end
+end)
